@@ -27,12 +27,17 @@ The tool helps automate the process of creating JIRA tickets for package updates
    pip install -r requirements.txt
    ```
 
-2. Set up JIRA CLI environment variables:
+2. Install and configure JIRA CLI:
    ```bash
-   export JIRA_API_TOKEN="your-jira-token"
+   # Install jira CLI (see https://github.com/ankitpokhrel/jira-cli)
+   # Then configure it
+   jira init
    ```
 
-3. Ensure you have the `.jira-cli` configuration directory
+3. Ensure JIRA CLI is working:
+   ```bash
+   jira --version
+   ```
 
 ## Usage
 
@@ -97,7 +102,6 @@ For `jira_generator.py`:
 - `--package NAME` - Process only specific package
 - `--generate-script` - Generate shell script instead of running commands
 - `--script-output FILE` - Output file for generated script (default: create_jira_tickets.sh)
-- `--container-runtime {docker,podman}` - Container runtime to use (default: podman)
 - `--no-dry-run` - Actually execute JIRA commands (default is dry-run)
 - `--non-interactive` - Run without prompts
 - `--ticket-dir DIR` - Directory containing ticket YAML files (default: ticket_text)
@@ -154,16 +158,17 @@ Tickets are created with:
 - All packages are needed for upstream compatibility in downstream releases
 - Default mode is dry-run for safety - use `--no-dry-run` to actually execute
 
-## Docker Command Format
+## JIRA CLI Command Format
 
-The tool generates container commands using the JIRA CLI (defaults to podman):
+The tool generates native JIRA CLI commands:
 
 ```bash
-podman run --rm \
-  -v $PWD/.jira-cli:/root/.config/.jira:Z \
-  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
-  ghcr.io/ankitpokhrel/jira-cli:latest \
-  jira epic create ...
+jira epic create \
+  -p AIPCC \
+  -n "builder: packagename package update request" \
+  -s "builder: packagename package update request" \
+  -b "ticket body..." \
+  --no-input
 ```
 
 ## Sample Output

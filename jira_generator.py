@@ -12,11 +12,13 @@ from typing import List, Dict
 import argparse
 
 class JiraTicketGenerator:
-    def __init__(self, ticket_dir: str, dry_run: bool = True, container_runtime: str = "podman"):
+    def __init__(self, ticket_dir: str, dry_run: bool = True):
         self.ticket_dir = Path(ticket_dir)
         self.dry_run = dry_run
-        self.container_runtime = container_runtime
         self.assignee = "rh-ee-raravind"
+        self.project = "AIPCC"
+        self.components = ["Accelerator Enablement", "Application Platform"]
+        self.label = "package"
         self.project = "AIPCC"
         self.components = ["Accelerator Enablement", "Application Platform"]
         self.label = "package"
@@ -100,12 +102,8 @@ class JiraTicketGenerator:
         
         commands = []
         
-        # Create epic command - we'll use a variable for the body
-        create_cmd = f'''{self.container_runtime} run --rm \\
-  -v $PWD/.jira-cli:/root/.config/.jira:Z \\
-  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
-  ghcr.io/ankitpokhrel/jira-cli:latest \\
-  jira epic create \\
+        # Create epic command - simple native jira command
+        create_cmd = f'''jira epic create \\
   -p {self.project} \\
   -n "{title}" \\
   -s "{title}" \\
@@ -115,11 +113,7 @@ class JiraTicketGenerator:
         commands.append(create_cmd)
         
         # Edit command (placeholder - we'll need the epic ID from the create command)
-        edit_cmd = f'''{self.container_runtime} run --rm \\
-  -v $PWD/.jira-cli:/root/.config/.jira:Z \\
-  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
-  ghcr.io/ankitpokhrel/jira-cli:latest \\
-  jira issue edit <EPIC_ID> \\
+        edit_cmd = f'''jira issue edit <EPIC_ID> \\
   -s "{title}" \\
   -y Normal \\
   -a {self.assignee} \\
@@ -140,14 +134,12 @@ class JiraTicketGenerator:
             "",
             "set -e",
             "",
-            "# Check required environment variables",
-            'if [ -z "$JIRA_API_TOKEN" ]; then',
-            '    echo "Error: JIRA_API_TOKEN environment variable is required"',
+            "# Check that jira CLI is available",
+            'if ! command -v jira &> /dev/null; then',
+            '    echo "Error: jira CLI not found. Please install it first."',
+            '    echo "See: https://github.com/ankitpokhrel/jira-cli"',
             '    exit 1',
             'fi',
-            "",
-            "# Create .jira-cli directory if it doesn't exist",
-            "mkdir -p .jira-cli",
             "",
             "# Function to extract epic ID from JIRA CLI output",
             "extract_epic_id() {",
@@ -156,7 +148,7 @@ class JiraTicketGenerator:
             "}",
             "",
             f"echo 'Creating {len(tickets)} JIRA tickets for vLLM package updates...'",
-            f"echo 'Using container runtime: {self.container_runtime}'",
+            f"echo 'Using native jira CLI'",
             ""
         ]
         
@@ -283,14 +275,12 @@ def main():
     parser.add_argument("--package", help="Process only specific package")
     parser.add_argument("--generate-script", action="store_true", help="Generate shell script instead of running commands")
     parser.add_argument("--script-output", default="create_jira_tickets.sh", help="Output file for generated script")
-    parser.add_argument("--container-runtime", default="podman", choices=["docker", "podman"], help="Container runtime to use (default: podman)")
     
     args = parser.parse_args()
     
     generator = JiraTicketGenerator(
         ticket_dir=args.ticket_dir,
-        dry_run=not args.no_dry_run,
-        container_runtime=args.container_runtime
+        dry_run=not args.no_dry_run
     )
     
     tickets = generator.load_ticket_files()

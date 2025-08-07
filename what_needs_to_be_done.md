@@ -49,6 +49,10 @@ It has a template found in example-ticket.txt
 
 Epic title should be: builder: <packagename> package update request
 
+Here I used "dougtest" as the example packagename.
+
+the -b is where we'll put the body.
+
 
 I tested creating one like this:
 
@@ -91,3 +95,4 @@ What we'll need to do is have a script that we can run that walks through all of
 
 I think we can probably write this in python, and potentially use jinja for formatting.
 
+This should default to a dry run, and! ...We need a pretty way to look at a preview of what we'll be submitting.
