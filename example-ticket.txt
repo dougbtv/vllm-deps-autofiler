@@ -1,0 +1,31 @@
+DO NOT DIRECTLY EDIT THIS TICKET.
+
+This template ticket can be cloned by Red Hat AI developers to request that new or updated packages be included in the AIPCC builder system.  Please follow the instructions below.
+
+Instructions:
+
+Read https://docs.google.com/document/d/1c8MVd9-ZPE_v8eYRlGhpc3Blmgu7a7DXKINJTaW6tfE/edit?tab=t.0#heading=h.x9b2r5r9zm45 to verify that your package meets the AIPCC team's packaging requirements, and must adhere to the policies in https://docs.google.com/document/d/1AMdx4AjNik4No6UZJohnYIsbBbQbH2SsCaqi62gYi4s/edit?tab=t.0#heading=h.i34mvquv4rgw . Packages not meeting these requirements will be rejected.
+Run "AIPCC Clone Epics and Children" (under the 'More' menu) to duplicate this template ticket and its children. (Most Jira users do not have permission to do that using the default  "Clone Epic and Children" operation.)
+Update the "Reporter" field to your name instead of the owner of the cloned ticket.
+Update the <name> field in the Summary of the cloned ticket.
+Update the <name> field in the Epic Name of the cloned ticket.
+Fill out the “Requested Package Name and Version”, “Brief Explanation for request” and "Package License" in the cloned ticket.
+If available, please include a link to the upstream package.  If necessary, the Platform Team may want to discuss alternative solutions in the upstream ticket and/or leave a comment about the resolution of the cloned ticket.
+Please use one package per ticket.
+
+The Platform Team may request additional information in the cloned ticket.
+
+The text above this line can be deleted from the cloned ticket.
+
+Requested Package Name and Version:
+
+Give the exact requirement specification of the package as it appears in your requirements.txt or pyproject.toml, including the name, any extras specifier and the version. If you know the GitHub or gitlab repository that hosts the source, including that link will be helpful, too. For example:
+
+package>=0.0
+Brief Explanation for request
+
+Link to any existing feature refinement or design documents.
+
+Package License
+
+You must verify that this package has a license (or legal agreement) that allows the package to be included in Red Hat products.
