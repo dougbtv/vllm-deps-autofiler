@@ -148,6 +148,12 @@ class JiraTicketGenerator:
             "# Create .jira-cli directory if it doesn't exist",
             "mkdir -p .jira-cli",
             "",
+            "# Function to extract epic ID from JIRA CLI output",
+            "extract_epic_id() {",
+            "    local output=\"$1\"",
+            "    echo \"$output\" | grep -o '[A-Z]*-[0-9]*' | head -1",
+            "}",
+            "",
             f"echo 'Creating {len(tickets)} JIRA tickets for vLLM package updates...'",
             ""
         ]
@@ -161,21 +167,36 @@ class JiraTicketGenerator:
             
             commands = self.generate_jira_commands(ticket)
             
-            for j, cmd in enumerate(commands, 1):
-                if j == 1:
-                    script_content.extend([
-                        f"# Create epic for {pkg_name}",
-                        f"echo 'Creating epic for {pkg_name}...'",
-                        cmd,
-                        "",
-                        "# TODO: Extract epic ID from output and use in edit command",
-                        f"# {commands[1]}",
-                        ""
-                    ])
+            script_content.extend([
+                f"# Create epic for {pkg_name}",
+                f"echo 'Creating epic for {pkg_name}...'",
+                f"CREATE_OUTPUT=$({commands[0]})",
+                "if [ $? -eq 0 ]; then",
+                f"    echo 'Epic created successfully for {pkg_name}'",
+                "    echo \"$CREATE_OUTPUT\"",
+                "    EPIC_ID=$(extract_epic_id \"$CREATE_OUTPUT\")",
+                "    if [ -n \"$EPIC_ID\" ]; then",
+                f"        echo 'Extracted Epic ID: '$EPIC_ID",
+                f"        echo 'Updating epic settings for {pkg_name}...'",
+                # Generate the edit command with placeholder replacement
+                f"        {commands[1].replace('<EPIC_ID>', '$EPIC_ID')}",
+                "        if [ $? -eq 0 ]; then",
+                f"            echo '✅ Successfully created and configured epic for {pkg_name}: '$EPIC_ID",
+                "        else",
+                f"            echo '❌ Failed to update epic settings for {pkg_name}'",
+                "        fi",
+                "    else",
+                f"        echo '❌ Could not extract Epic ID for {pkg_name}'",
+                "    fi",
+                "else",
+                f"    echo '❌ Failed to create epic for {pkg_name}'",
+                "fi",
+                ""
+            ])
         
         script_content.extend([
-            "echo 'All tickets created!'",
-            "echo 'Note: You need to manually update the edit commands with the actual epic IDs'"
+            "echo '🎉 All tickets processed!'",
+            "echo 'Check the output above for any failed operations.'"
         ])
         
         with open(output_file, 'w') as f:
