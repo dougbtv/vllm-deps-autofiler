@@ -16,7 +16,6 @@ The tool helps automate the process of creating JIRA tickets for package updates
 - `parse_diff.py` - Parses the vLLM requirements diff and generates ticket files
 - `jira_generator.py` - Generates JIRA CLI commands and provides preview functionality
 - `vllm-reqs.diff` - The diff file showing package changes between vLLM versions
-- `example-ticket.txt` - Template for JIRA ticket format
 - `ticket_text/` - Directory containing generated ticket YAML files
 - `requirements.txt` - Python dependencies
 
