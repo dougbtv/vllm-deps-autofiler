@@ -119,7 +119,8 @@ class JiraTicketGenerator:
   -a {self.assignee} \\
   -l {self.label} \\
   -C "{self.components[0]}" \\
-  -C "{self.components[1]}"'''
+  -C "{self.components[1]}" \\
+  --no-input'''
         
         commands.append(edit_cmd)
         
