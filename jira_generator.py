@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+Generate JIRA CLI commands for creating package update tickets.
+Provides preview functionality and dry-run mode.
+"""
+
+import yaml
+import os
+import subprocess
+from pathlib import Path
+from typing import List, Dict
+import argparse
+
+class JiraTicketGenerator:
+    def __init__(self, ticket_dir: str, dry_run: bool = True):
+        self.ticket_dir = Path(ticket_dir)
+        self.dry_run = dry_run
+        self.assignee = "rh-ee-raravind"
+        self.project = "AIPCC"
+        self.components = ["Accelerator Enablement", "Application Platform"]
+        self.label = "package"
+    
+    def load_ticket_files(self) -> List[Dict]:
+        """Load all ticket YAML files."""
+        tickets = []
+        for yaml_file in self.ticket_dir.glob("*.yaml"):
+            with open(yaml_file, 'r') as f:
+                ticket_data = yaml.safe_load(f)
+                ticket_data['filename'] = yaml_file.name
+                tickets.append(ticket_data)
+        return sorted(tickets, key=lambda x: x['package_name'])
+    
+    def preview_tickets(self, tickets: List[Dict]):
+        """Display a preview of all tickets to be created."""
+        print("\n" + "="*80)
+        print("📋 JIRA TICKET PREVIEW")
+        print("="*80)
+        
+        print(f"{'Package':<25} {'Old Version':<15} {'New Version':<15} {'Change Type':<12} {'Files'}")
+        print("-" * 80)
+        
+        for ticket in tickets:
+            old_ver = ticket['old_version'] or "N/A"
+            new_ver = ticket['new_version'] or "N/A"
+            files = ", ".join(ticket['files'][:2])  # Show first 2 files
+            if len(ticket['files']) > 2:
+                files += f" (+{len(ticket['files'])-2} more)"
+            
+            # Determine change type
+            if ticket['old_version'] is None:
+                change_type = "NEW"
+            elif ticket['new_version'] is None:
+                change_type = "REMOVE"
+            else:
+                change_type = "UPDATE"
+            
+            print(f"{ticket['package_name']:<25} {old_ver:<15} {new_ver:<15} {change_type:<12} {files}")
+        
+        print(f"\nTotal tickets to create: {len(tickets)}")
+        print("="*80)
+    
+    def preview_ticket_details(self, ticket: Dict):
+        """Show detailed preview of a single ticket."""
+        pkg_name = ticket['package_name']
+        title = f"builder: {pkg_name} package update request"
+        
+        print(f"\n{'='*60}")
+        print(f"📦 {pkg_name.upper()} TICKET DETAILS")
+        print(f"{'='*60}")
+        print(f"Epic Title: {title}")
+        print(f"Package: {pkg_name}")
+        print(f"Old Version: {ticket['old_version'] or 'N/A'}")
+        print(f"New Version: {ticket['new_version'] or 'N/A'}")
+        print(f"Files: {', '.join(ticket['files'])}")
+        print(f"Assignee: {self.assignee}")
+        print(f"Components: {', '.join(self.components)}")
+        print(f"Label: {self.label}")
+        
+        print(f"\n{'='*60}")
+        print("📝 TICKET BODY (PREVIEW)")
+        print(f"{'='*60}")
+        
+        # Body preview (truncated)
+        body_lines = ticket['body_description'].split('\n')
+        preview_body = '\n'.join(body_lines[:15])
+        if len(body_lines) > 15:
+            preview_body += "\n... (truncated)"
+        
+        print(preview_body)
+        print(f"{'='*60}")
+    
+    def generate_jira_commands(self, ticket: Dict) -> List[str]:
+        """Generate JIRA CLI commands for a single ticket."""
+        pkg_name = ticket['package_name']
+        title = f"builder: {pkg_name} package update request"
+        
+        # Escape quotes and newlines for shell
+        body = ticket['body_description'].replace('"', '\\"').replace('\n', '\\n')
+        
+        commands = []
+        
+        # Create epic command
+        create_cmd = f'''docker run -it --rm \\
+  -v $PWD/.jira-cli:/root/.config/.jira:Z \\
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
+  ghcr.io/ankitpokhrel/jira-cli:latest \\
+  jira epic create \\
+  -p {self.project} \\
+  -n "{title}" \\
+  -s "{title}" \\
+  -b "{body}" \\
+  --no-input'''
+        
+        commands.append(create_cmd)
+        
+        # Edit command (placeholder - we'll need the epic ID from the create command)
+        edit_cmd = f'''docker run -it --rm \\
+  -v $PWD/.jira-cli:/root/.config/.jira:Z \\
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
+  ghcr.io/ankitpokhrel/jira-cli:latest \\
+  jira issue edit <EPIC_ID> \\
+  -s "{title}" \\
+  -y Normal \\
+  -a {self.assignee} \\
+  -l {self.label} \\
+  -C "{self.components[0]}" \\
+  -C "{self.components[1]}"'''
+        
+        commands.append(edit_cmd)
+        
+        return commands
+    
+    def generate_script_file(self, tickets: List[Dict], output_file: str = "create_jira_tickets.sh"):
+        """Generate a shell script with all JIRA commands."""
+        script_content = [
+            "#!/bin/bash",
+            "# Auto-generated script to create JIRA tickets for vLLM package updates",
+            "# Generated by deps-autofiler tool",
+            "",
+            "set -e",
+            "",
+            "# Check required environment variables",
+            'if [ -z "$JIRA_API_TOKEN" ]; then',
+            '    echo "Error: JIRA_API_TOKEN environment variable is required"',
+            '    exit 1',
+            'fi',
+            "",
+            "# Create .jira-cli directory if it doesn't exist",
+            "mkdir -p .jira-cli",
+            "",
+            f"echo 'Creating {len(tickets)} JIRA tickets for vLLM package updates...'",
+            ""
+        ]
+        
+        for i, ticket in enumerate(tickets, 1):
+            pkg_name = ticket['package_name']
+            script_content.extend([
+                f"echo '📦 Processing {pkg_name} ({i}/{len(tickets)})...'",
+                ""
+            ])
+            
+            commands = self.generate_jira_commands(ticket)
+            
+            for j, cmd in enumerate(commands, 1):
+                if j == 1:
+                    script_content.extend([
+                        f"# Create epic for {pkg_name}",
+                        f"echo 'Creating epic for {pkg_name}...'",
+                        cmd,
+                        "",
+                        "# TODO: Extract epic ID from output and use in edit command",
+                        f"# {commands[1]}",
+                        ""
+                    ])
+        
+        script_content.extend([
+            "echo 'All tickets created!'",
+            "echo 'Note: You need to manually update the edit commands with the actual epic IDs'"
+        ])
+        
+        with open(output_file, 'w') as f:
+            f.write('\n'.join(script_content))
+        
+        # Make script executable
+        os.chmod(output_file, 0o755)
+        
+        print(f"\n✅ Generated script: {output_file}")
+        return output_file
+    
+    def run_tickets(self, tickets: List[Dict], interactive: bool = True):
+        """Run JIRA commands for all tickets."""
+        if self.dry_run:
+            print("🔍 DRY RUN MODE - Commands will be displayed but not executed\n")
+        
+        for i, ticket in enumerate(tickets, 1):
+            pkg_name = ticket['package_name']
+            print(f"\n📦 Processing {pkg_name} ({i}/{len(tickets)})")
+            
+            if interactive:
+                self.preview_ticket_details(ticket)
+                
+                response = input("\nContinue with this ticket? [Y/n]: ")
+                if response.lower().startswith('n'):
+                    print(f"⏭️  Skipped {pkg_name}")
+                    continue
+            
+            self.process_single_ticket(ticket)
+    
+    def process_single_ticket(self, ticket: Dict):
+        """Process a single ticket."""
+        pkg_name = ticket['package_name']
+        commands = self.generate_jira_commands(ticket)
+        
+        print(f"\n🔧 Commands for {pkg_name}:")
+        
+        for i, cmd in enumerate(commands, 1):
+            print(f"\n--- Command {i} ---")
+            print(cmd)
+            print("--- End Command ---")
+            
+            if not self.dry_run:
+                response = input(f"Execute command {i}? [Y/n]: ")
+                if response.lower().startswith('n'):
+                    print("⏭️  Command skipped")
+                    continue
+                
+                # Execute the command
+                try:
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        print("✅ Command executed successfully")
+                        print(result.stdout)
+                    else:
+                        print("❌ Command failed")
+                        print(result.stderr)
+                except Exception as e:
+                    print(f"❌ Error executing command: {e}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate JIRA tickets for vLLM package updates")
+    parser.add_argument("--ticket-dir", default="ticket_text", help="Directory containing ticket YAML files")
+    parser.add_argument("--no-dry-run", action="store_true", help="Actually execute JIRA commands")
+    parser.add_argument("--non-interactive", action="store_true", help="Run without prompts")
+    parser.add_argument("--preview-only", action="store_true", help="Only show preview, don't process tickets")
+    parser.add_argument("--package", help="Process only specific package")
+    parser.add_argument("--generate-script", action="store_true", help="Generate shell script instead of running commands")
+    parser.add_argument("--script-output", default="create_jira_tickets.sh", help="Output file for generated script")
+    
+    args = parser.parse_args()
+    
+    generator = JiraTicketGenerator(
+        ticket_dir=args.ticket_dir,
+        dry_run=not args.no_dry_run
+    )
+    
+    tickets = generator.load_ticket_files()
+    
+    if args.package:
+        tickets = [t for t in tickets if t['package_name'] == args.package]
+        if not tickets:
+            print(f"❌ Package '{args.package}' not found!")
+            return
+    
+    if not tickets:
+        print("❌ No tickets found!")
+        return
+    
+    generator.preview_tickets(tickets)
+    
+    if args.generate_script:
+        generator.generate_script_file(tickets, args.script_output)
+        return
+    
+    if args.preview_only:
+        return
+    
+    if not args.non_interactive:
+        response = input(f"\nProceed with {len(tickets)} tickets? [Y/n]: ")
+        if response.lower().startswith('n'):
+            print("❌ Cancelled")
+            return
+    
+    generator.run_tickets(tickets, interactive=not args.non_interactive)
+
+if __name__ == "__main__":
+    main()
