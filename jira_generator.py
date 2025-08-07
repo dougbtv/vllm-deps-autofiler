@@ -12,9 +12,10 @@ from typing import List, Dict
 import argparse
 
 class JiraTicketGenerator:
-    def __init__(self, ticket_dir: str, dry_run: bool = True):
+    def __init__(self, ticket_dir: str, dry_run: bool = True, container_runtime: str = "podman"):
         self.ticket_dir = Path(ticket_dir)
         self.dry_run = dry_run
+        self.container_runtime = container_runtime
         self.assignee = "rh-ee-raravind"
         self.project = "AIPCC"
         self.components = ["Accelerator Enablement", "Application Platform"]
@@ -94,13 +95,13 @@ class JiraTicketGenerator:
         pkg_name = ticket['package_name']
         title = f"builder: {pkg_name} package update request"
         
-        # Escape quotes and newlines for shell
-        body = ticket['body_description'].replace('"', '\\"').replace('\n', '\\n')
+        # Don't escape the body here - we'll handle it differently in the script
+        body = ticket['body_description']
         
         commands = []
         
-        # Create epic command
-        create_cmd = f'''docker run -it --rm \\
+        # Create epic command - we'll use a variable for the body
+        create_cmd = f'''{self.container_runtime} run --rm \\
   -v $PWD/.jira-cli:/root/.config/.jira:Z \\
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
   ghcr.io/ankitpokhrel/jira-cli:latest \\
@@ -108,13 +109,13 @@ class JiraTicketGenerator:
   -p {self.project} \\
   -n "{title}" \\
   -s "{title}" \\
-  -b "{body}" \\
+  -b "$BODY_TEXT" \\
   --no-input'''
         
         commands.append(create_cmd)
         
         # Edit command (placeholder - we'll need the epic ID from the create command)
-        edit_cmd = f'''docker run -it --rm \\
+        edit_cmd = f'''{self.container_runtime} run --rm \\
   -v $PWD/.jira-cli:/root/.config/.jira:Z \\
   -e JIRA_API_TOKEN=$JIRA_API_TOKEN \\
   ghcr.io/ankitpokhrel/jira-cli:latest \\
@@ -155,6 +156,7 @@ class JiraTicketGenerator:
             "}",
             "",
             f"echo 'Creating {len(tickets)} JIRA tickets for vLLM package updates...'",
+            f"echo 'Using container runtime: {self.container_runtime}'",
             ""
         ]
         
@@ -167,29 +169,44 @@ class JiraTicketGenerator:
             
             commands = self.generate_jira_commands(ticket)
             
+            # Use a here-document to safely handle the body text
             script_content.extend([
                 f"# Create epic for {pkg_name}",
                 f"echo 'Creating epic for {pkg_name}...'",
-                f"CREATE_OUTPUT=$({commands[0]})",
-                "if [ $? -eq 0 ]; then",
-                f"    echo 'Epic created successfully for {pkg_name}'",
-                "    echo \"$CREATE_OUTPUT\"",
+                "",
+                f"# Set body text using here-document to handle multiline content safely",
+                f"read -r -d '' BODY_TEXT << 'EOF' || true",
+                ticket['body_description'],
+                "EOF",
+                "",
+                f"echo 'Command: {commands[0]}'",  # Debug: show the command
+                f"CREATE_OUTPUT=$({commands[0]} 2>&1)",  # Capture both stdout and stderr
+                "CREATE_EXIT_CODE=$?",
+                f"echo 'Exit code: '$CREATE_EXIT_CODE",
+                f"echo 'Output: '$CREATE_OUTPUT",
+                "if [ $CREATE_EXIT_CODE -eq 0 ]; then",
+                f"    echo '✅ Epic created successfully for {pkg_name}'",
                 "    EPIC_ID=$(extract_epic_id \"$CREATE_OUTPUT\")",
                 "    if [ -n \"$EPIC_ID\" ]; then",
                 f"        echo 'Extracted Epic ID: '$EPIC_ID",
                 f"        echo 'Updating epic settings for {pkg_name}...'",
                 # Generate the edit command with placeholder replacement
-                f"        {commands[1].replace('<EPIC_ID>', '$EPIC_ID')}",
-                "        if [ $? -eq 0 ]; then",
+                f"        EDIT_OUTPUT=$({commands[1].replace('<EPIC_ID>', '$EPIC_ID')} 2>&1)",
+                "        EDIT_EXIT_CODE=$?",
+                f"        echo 'Edit exit code: '$EDIT_EXIT_CODE",
+                f"        echo 'Edit output: '$EDIT_OUTPUT",
+                "        if [ $EDIT_EXIT_CODE -eq 0 ]; then",
                 f"            echo '✅ Successfully created and configured epic for {pkg_name}: '$EPIC_ID",
                 "        else",
                 f"            echo '❌ Failed to update epic settings for {pkg_name}'",
                 "        fi",
                 "    else",
-                f"        echo '❌ Could not extract Epic ID for {pkg_name}'",
+                f"        echo '❌ Could not extract Epic ID for {pkg_name} from output:'",
+                "        echo \"$CREATE_OUTPUT\"",
                 "    fi",
                 "else",
                 f"    echo '❌ Failed to create epic for {pkg_name}'",
+                "    echo \"$CREATE_OUTPUT\"",
                 "fi",
                 ""
             ])
@@ -266,12 +283,14 @@ def main():
     parser.add_argument("--package", help="Process only specific package")
     parser.add_argument("--generate-script", action="store_true", help="Generate shell script instead of running commands")
     parser.add_argument("--script-output", default="create_jira_tickets.sh", help="Output file for generated script")
+    parser.add_argument("--container-runtime", default="podman", choices=["docker", "podman"], help="Container runtime to use (default: podman)")
     
     args = parser.parse_args()
     
     generator = JiraTicketGenerator(
         ticket_dir=args.ticket_dir,
-        dry_run=not args.no_dry_run
+        dry_run=not args.no_dry_run,
+        container_runtime=args.container_runtime
     )
     
     tickets = generator.load_ticket_files()

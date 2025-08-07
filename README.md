@@ -97,6 +97,7 @@ For `jira_generator.py`:
 - `--package NAME` - Process only specific package
 - `--generate-script` - Generate shell script instead of running commands
 - `--script-output FILE` - Output file for generated script (default: create_jira_tickets.sh)
+- `--container-runtime {docker,podman}` - Container runtime to use (default: podman)
 - `--no-dry-run` - Actually execute JIRA commands (default is dry-run)
 - `--non-interactive` - Run without prompts
 - `--ticket-dir DIR` - Directory containing ticket YAML files (default: ticket_text)
@@ -155,13 +156,13 @@ Tickets are created with:
 
 ## Docker Command Format
 
-The tool generates Docker commands using the JIRA CLI:
+The tool generates container commands using the JIRA CLI (defaults to podman):
 
 ```bash
-docker run -it --rm 
-  -v $PWD/.jira-cli:/root/.config/.jira:Z 
-  -e JIRA_API_TOKEN=$JIRA_API_TOKEN 
-  ghcr.io/ankitpokhrel/jira-cli:latest 
+podman run --rm \
+  -v $PWD/.jira-cli:/root/.config/.jira:Z \
+  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
+  ghcr.io/ankitpokhrel/jira-cli:latest \
   jira epic create ...
 ```
 
