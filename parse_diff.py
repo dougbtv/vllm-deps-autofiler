@@ -5,8 +5,112 @@ Parse vLLM requirements diff to extract package changes for JIRA ticket generati
 
 import re
 import yaml
+import subprocess
+import tempfile
+import shutil
+import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Set
+
+def clone_vllm_repo(temp_dir: Path) -> Path:
+    """Clone the vLLM repository to a temporary directory."""
+    vllm_path = temp_dir / "vllm"
+    print("Cloning vLLM repository...")
+    subprocess.run([
+        "git", "clone", "https://github.com/vllm-project/vllm.git", str(vllm_path)
+    ], check=True, capture_output=True)
+    return vllm_path
+
+def filter_requirements_files(requirements_dir: Path) -> List[Path]:
+    """Filter requirements files to only include the ones we care about."""
+    # Include: common, build, cuda, rocm, tpu
+    # Exclude: test*, nightly*, cpu*
+    include_patterns = ["common", "build", "cuda", "rocm", "tpu"]
+    exclude_patterns = ["test", "nightly", "cpu"]
+    
+    filtered_files = []
+    
+    # Check both .txt and .in files
+    for pattern in ["*.txt", "*.in"]:
+        for req_file in requirements_dir.glob(pattern):
+            filename = req_file.stem.lower()
+            
+            # Check if it matches any exclude pattern
+            should_exclude = any(exclude in filename for exclude in exclude_patterns)
+            if should_exclude:
+                continue
+                
+            # Check if it matches any include pattern or is a base requirements file
+            should_include = (
+                any(include in filename for include in include_patterns) or
+                filename == "requirements"  # Include base requirements.txt/.in if it exists
+            )
+            
+            if should_include:
+                filtered_files.append(req_file)
+    
+    return filtered_files
+
+def generate_requirements_diff(repo_path: Path, old_ref: str, new_ref: str) -> str:
+    """Generate a diff between requirements directories for two git refs."""
+    print(f"Generating diff between {old_ref} and {new_ref}...")
+    
+    # Create temporary directories for each version
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        old_req_dir = temp_path / "old_requirements"
+        new_req_dir = temp_path / "new_requirements"
+        
+        # Checkout old version and copy filtered requirements
+        subprocess.run(["git", "checkout", old_ref], 
+                      cwd=repo_path, check=True, capture_output=True)
+        
+        old_req_source = repo_path / "requirements"
+        if old_req_source.exists():
+            shutil.copytree(old_req_source, old_req_dir)
+            # Filter to only the files we care about
+            old_filtered = filter_requirements_files(old_req_dir)
+            # Remove files we don't want (both .txt and .in)
+            for pattern in ["*.txt", "*.in"]:
+                for req_file in old_req_dir.glob(pattern):
+                    if req_file not in old_filtered:
+                        req_file.unlink()
+        else:
+            old_req_dir.mkdir()
+        
+        # Checkout new version and copy filtered requirements
+        subprocess.run(["git", "checkout", new_ref], 
+                      cwd=repo_path, check=True, capture_output=True)
+        
+        new_req_source = repo_path / "requirements"
+        if new_req_source.exists():
+            shutil.copytree(new_req_source, new_req_dir)
+            # Filter to only the files we care about
+            new_filtered = filter_requirements_files(new_req_dir)
+            # Remove files we don't want (both .txt and .in)
+            for pattern in ["*.txt", "*.in"]:
+                for req_file in new_req_dir.glob(pattern):
+                    if req_file not in new_filtered:
+                        req_file.unlink()
+        else:
+            new_req_dir.mkdir()
+        
+        # Generate diff
+        try:
+            result = subprocess.run([
+                "diff", "-ru", str(old_req_dir), str(new_req_dir)
+            ], capture_output=True, text=True)
+            
+            # diff returns 1 when there are differences, which is expected
+            if result.returncode in [0, 1]:
+                return result.stdout
+            else:
+                print(f"Warning: diff command returned code {result.returncode}")
+                print(f"stderr: {result.stderr}")
+                return result.stdout
+        except subprocess.CalledProcessError as e:
+            print(f"Error running diff: {e}")
+            return ""
 
 def parse_package_line(line: str) -> Tuple[str, str]:
     """Extract package name and version from a requirement line."""
@@ -136,15 +240,105 @@ This package has been verified to have a license compatible with Red Hat product
 
 def main():
     """Main function to parse diff and generate ticket files."""
-    # Read the diff file
-    diff_path = Path(__file__).parent / "vllm-reqs.diff"
+    parser = argparse.ArgumentParser(
+        description="Generate JIRA tickets from vLLM requirements changes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s --old-ref v0.10.0 --new-ref main
+  %(prog)s --old-ref v0.9.0 --new-ref v0.10.0
+  %(prog)s --diff-file vllm-reqs.diff  # Use existing diff file
+        """
+    )
     
-    if not diff_path.exists():
-        print(f"Error: {diff_path} not found!")
-        return
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--diff-file", 
+        type=str,
+        help="Path to existing diff file to parse"
+    )
+    group.add_argument(
+        "--generate-diff",
+        action="store_true",
+        help="Generate diff from git repository"
+    )
     
-    with open(diff_path, 'r') as f:
-        diff_content = f.read()
+    parser.add_argument(
+        "--old-ref",
+        type=str,
+        default="v0.10.0",
+        help="Old git ref/tag/branch to compare from (default: v0.10.0)"
+    )
+    
+    parser.add_argument(
+        "--new-ref", 
+        type=str,
+        default="main",
+        help="New git ref/tag/branch to compare to (default: main)"
+    )
+    
+    parser.add_argument(
+        "--repo-url",
+        type=str,
+        default="https://github.com/vllm-project/vllm.git",
+        help="vLLM repository URL (default: https://github.com/vllm-project/vllm.git)"
+    )
+    
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="ticket_text",
+        help="Directory to output ticket files (default: ticket_text)"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.diff_file:
+        # Read existing diff file
+        diff_path = Path(args.diff_file)
+        if not diff_path.exists():
+            print(f"Error: {diff_path} not found!")
+            return
+        
+        with open(diff_path, 'r') as f:
+            diff_content = f.read()
+        
+        print(f"Reading diff from {diff_path}")
+    
+    elif args.generate_diff:
+        # Generate diff from repository
+        if not args.old_ref or not args.new_ref:
+            print("Error: --old-ref and --new-ref are required when using --generate-diff")
+            return
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            try:
+                # Clone repository
+                repo_path = clone_vllm_repo(temp_path)
+                
+                # Generate diff
+                diff_content = generate_requirements_diff(repo_path, args.old_ref, args.new_ref)
+                
+                if not diff_content.strip():
+                    print("No differences found between the specified refs.")
+                    return
+                
+                print(f"Generated diff between {args.old_ref} and {args.new_ref}")
+                
+                # Optionally save the generated diff
+                diff_output_path = Path(__file__).parent / f"vllm-reqs-{args.old_ref}-to-{args.new_ref}.diff"
+                with open(diff_output_path, 'w') as f:
+                    f.write(diff_content)
+                print(f"Saved diff to {diff_output_path}")
+                
+            except subprocess.CalledProcessError as e:
+                print(f"Error generating diff: {e}")
+                return
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                return
     
     # Extract changes
     changes = extract_changes_from_diff(diff_content)
@@ -152,7 +346,7 @@ def main():
     print(f"Found {len(changes)} package changes:")
     
     # Create ticket files
-    ticket_dir = Path(__file__).parent / "ticket_text"
+    ticket_dir = Path(__file__).parent / args.output_dir
     ticket_dir.mkdir(exist_ok=True)
     
     for package_name, change_info in changes.items():

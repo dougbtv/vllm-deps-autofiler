@@ -6,16 +6,17 @@ This tool automatically generates JIRA tickets for vLLM package updates by parsi
 
 The tool helps automate the process of creating JIRA tickets for package updates in the vLLM project. It:
 
-1. Parses a diff file to identify package changes
-2. Generates structured ticket data for each package
-3. Creates JIRA CLI commands to submit tickets
-4. Provides preview and dry-run capabilities
+1. Generates diffs between vLLM versions OR parses existing diff files
+2. Filters requirements to focus on production dependencies (excludes test*, nightly*, cpu*)
+3. Extracts package changes and generates structured ticket data
+4. Creates JIRA CLI commands to submit tickets
+5. Provides preview and dry-run capabilities
 
 ## Files
 
-- `parse_diff.py` - Parses the vLLM requirements diff and generates ticket files
+- `parse_diff.py` - Generates diffs from git and parses requirements changes to create ticket files
 - `jira_generator.py` - Generates JIRA CLI commands and provides preview functionality
-- `vllm-reqs.diff` - The diff file showing package changes between vLLM versions
+- `vllm-reqs.diff` - Example diff file showing package changes between vLLM versions
 - `ticket_text/` - Directory containing generated ticket YAML files
 - `requirements.txt` - Python dependencies
 
@@ -40,13 +41,53 @@ The tool helps automate the process of creating JIRA tickets for package updates
 
 ## Usage
 
-### Step 1: Parse the diff file
+### Step 1: Generate or Parse Diff
 
-Parse the vLLM requirements diff to extract package changes:
+#### Option A: Generate diff from vLLM repository (Recommended)
+
+Generate a diff between two vLLM versions automatically:
 
 ```bash
-python3 parse_diff.py
+# Compare v0.10.0 to main branch
+python3 parse_diff.py --generate-diff --old-ref v0.10.0 --new-ref main
+
+# Compare specific versions
+python3 parse_diff.py --generate-diff --old-ref v0.9.0 --new-ref v0.10.0
+
+# Use different output directory
+python3 parse_diff.py --generate-diff --old-ref v0.10.0 --new-ref main --output-dir my_tickets
 ```
+
+This will:
+- Clone the vLLM repository to a temporary directory
+- Extract requirements for both versions
+- Filter out test*, nightly*, and cpu* requirements (keeping common, build, cuda, rocm, tpu)
+- Generate a diff and save it for reference
+- Parse the diff and create ticket files
+
+#### Option B: Parse existing diff file
+
+If you already have a diff file:
+
+```bash
+python3 parse_diff.py --diff-file your-diff-file.diff
+```
+
+### Supported Requirements Files
+
+The tool automatically filters requirements to focus on production dependencies:
+
+**Included:**
+- `requirements/common.txt` and `requirements/common.in`
+- `requirements/build.txt` and `requirements/build.in`
+- `requirements/cuda.txt` and `requirements/cuda.in`
+- `requirements/rocm.txt` and `requirements/rocm.in`
+- `requirements/tpu.txt` and `requirements/tpu.in`
+
+**Excluded:**
+- `requirements/test*.txt` and `requirements/test*.in`
+- `requirements/nightly*.txt` and `requirements/nightly*.in`
+- `requirements/cpu*.txt` and `requirements/cpu*.in`
 
 This will:
 - Read `vllm-reqs.diff`
