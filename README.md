@@ -9,13 +9,13 @@ The tool helps automate the process of creating JIRA tickets for package updates
 1. Generates diffs between vLLM versions OR parses existing diff files
 2. Filters requirements to focus on production dependencies (excludes test*, nightly*, cpu*)
 3. Extracts package changes and generates structured ticket data
-4. Creates JIRA CLI commands to submit tickets
+4. Creates JIRA tickets directly using [rhjira](https://gitlab.com/prarit/rhjira) tool with template epic cloning
 5. Provides preview and dry-run capabilities
 
 ## Files
 
 - `parse_diff.py` - Generates diffs from git and parses requirements changes to create ticket files
-- `jira_generator.py` - Generates JIRA CLI commands and provides preview functionality
+- `jira_generator.py` - Creates JIRA tickets directly using `rhjira` tool and provides preview functionality
 - `vllm-reqs.diff` - Example diff file showing package changes between vLLM versions
 - `ticket_text/` - Directory containing generated ticket YAML files
 - `requirements.txt` - Python dependencies
@@ -27,16 +27,17 @@ The tool helps automate the process of creating JIRA tickets for package updates
    pip install -r requirements.txt
    ```
 
-2. Install and configure JIRA CLI:
+2. Install and configure rhjira tool:
    ```bash
-   # Install jira CLI (see https://github.com/ankitpokhrel/jira-cli)
-   # Then configure it
-   jira init
+   # Install rhjira (Red Hat JIRA CLI tool)
+   pip install rhjira
+   export JIRA_TOKEN=ZzzExampleHere
    ```
 
-3. Ensure JIRA CLI is working:
+3. Ensure rhjira is working:
    ```bash
-   jira --version
+   rhjira --version
+   rhjira dump AIPCC-1
    ```
 
 ## Usage
@@ -108,30 +109,30 @@ Preview a specific package:
 python3 jira_generator.py --package transformers --preview-only
 ```
 
-### Step 3: Generate JIRA commands
+### Step 3: Create JIRA tickets
 
-#### Option A: Generate a shell script (Recommended)
-
-Generate a shell script with all JIRA commands:
-
-```bash
-python3 jira_generator.py --generate-script
-```
-
-This creates `create_jira_tickets.sh` that you can review and execute.
-
-#### Option B: Interactive mode
-
-Run in interactive mode (dry-run by default):
+Run in dry-run mode to preview what will be created (default):
 
 ```bash
 python3 jira_generator.py
 ```
 
-Run for real (actually execute JIRA commands):
+Run for real (actually create JIRA tickets):
 
 ```bash
 python3 jira_generator.py --no-dry-run
+```
+
+Run non-interactively (no prompts):
+
+```bash
+python3 jira_generator.py --no-dry-run --non-interactive
+```
+
+Process only a specific package:
+
+```bash
+python3 jira_generator.py --package transformers --no-dry-run
 ```
 
 ### Command Line Options
@@ -140,8 +141,6 @@ For `jira_generator.py`:
 
 - `--preview-only` - Only show preview, don't process tickets
 - `--package NAME` - Process only specific package
-- `--generate-script` - Generate shell script instead of running commands
-- `--script-output FILE` - Output file for generated script (default: create_jira_tickets.sh)
 - `--no-dry-run` - Actually execute JIRA commands (default is dry-run)
 - `--non-interactive` - Run without prompts
 - `--ticket-dir DIR` - Directory containing ticket YAML files (default: ticket_text)
@@ -158,18 +157,13 @@ For `jira_generator.py`:
    python3 jira_generator.py --preview-only
    ```
 
-3. **Generate script:**
+3. **Create JIRA tickets:**
    ```bash
-   python3 jira_generator.py --generate-script
-   ```
-
-4. **Review and execute script:**
-   ```bash
-   # Review the generated script
-   less create_jira_tickets.sh
+   # Dry run first to see what would be created
+   python3 jira_generator.py
    
-   # Execute it
-   ./create_jira_tickets.sh
+   # Actually create the tickets
+   python3 jira_generator.py --no-dry-run
    ```
 
 ## Ticket Structure
@@ -184,31 +178,30 @@ Each generated ticket includes:
 
 ## JIRA Configuration
 
-Tickets are created with:
-- **Project:** AIPCC
-- **Assignee:** rh-ee-raravind
-- **Components:** Accelerator Enablement, Application Platform
-- **Label:** package
-- **Priority:** Normal
+Tickets are created by cloning the template epic **AIPCC-1** and then updating it with package-specific details. This approach ensures:
 
-## Notes
+- Consistent epic structure and settings
+- Proper project assignment and components
+- Standardized workflow and labels
 
-- The tickets are pre-emptive of the vLLM v0.10.1 release
-- There may be further changes when v0.10.1 is officially cut
-- All packages are needed for upstream compatibility in downstream releases
-- Default mode is dry-run for safety - use `--no-dry-run` to actually execute
+The tool uses the `rhjira` command-line tool to:
+1. Clone the template epic: `rhjira clone AIPCC-1`
+2. Update the cloned epic with package details: `rhjira edit <NEW_ID> --epicname "..." --description "..." --noeditor`
 
-## JIRA CLI Command Format
+## rhjira Command Format
 
-The tool generates native JIRA CLI commands:
+The tool uses rhjira commands to create tickets via template cloning:
 
 ```bash
-jira epic create \
-  -p AIPCC \
-  -n "builder: packagename package update request" \
-  -s "builder: packagename package update request" \
-  -b "ticket body..." \
-  --no-input
+# Step 1: Clone template epic
+rhjira clone AIPCC-1
+
+# Step 2: Update with package details
+rhjira edit <NEW_EPIC_ID> \
+  --epicname "builder: packagename package update request" \
+  --summary "builder: packagename package update request" \
+  --description "ticket body..." \
+  --noeditor
 ```
 
 ## Sample Output
@@ -228,24 +221,26 @@ Total tickets to create: 20
 ================================================================================
 ```
 
-## Doug notes...
+## Setup Notes
 
-automatically files jira deps, dude.
+### JIRA Authentication
 
-# stuff I did...
+You'll need to set up authentication for the rhjira tool. This typically involves:
 
-Create a JIRA API PAT by going to your profile and then making a personal access token. Save it in your .env file here.
+1. Creating a JIRA API token from your profile
+2. Configuring the rhjira tool with your credentials
+3. Ensuring you have access to the AIPCC project and can clone AIPCC-1
 
-```
-source .env
-docker run -it --rm \
-  -v $PWD/.jira-cli:/root/.config/.jira:Z \
-  -e JIRA_API_TOKEN=$JIRA_API_TOKEN \
-  ghcr.io/ankitpokhrel/jira-cli:latest
-```
+### Template Epic
 
-First time through, do `jira init` and add your URL and username.
+The tool relies on **AIPCC-1** as a template epic. This epic should have:
+- Proper project assignment (AIPCC)
+- Correct components and labels
+- Appropriate workflow settings
+- Standard epic structure
 
-It should save in the local `.jira-cli` dir here.
+All new tickets are created by cloning this template and updating the content.
+
+## Development Notes
 
 My initial diff is from: 4da8bf20d08f1f8f97a4839d580eb923d0ca9415
