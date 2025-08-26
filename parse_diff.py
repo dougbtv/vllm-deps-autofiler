@@ -218,16 +218,17 @@ def generate_ticket_body(package_name: str, old_version: str, new_version: str, 
 
 Brief Explanation for request:
 
-This package {change_type} is required for vLLM v0.10.1 release compatibility. 
+This package {change_type} is required for the compatibility with the upcoming vLLM release.
 
 {version_info}
 
-This change appears in the following requirement files: {', '.join(files)}
+This change appears in the following vLLM requirement files: {', '.join(files)}
 
 Context:
-- The tickets are pre-emptive of the release of vLLM v0.10.1
-- There may still be further changes when v0.10.1 is cut
-- The reasons that we need the packages is because they've been updated in upstream vLLM and we need them for the next midstream and later downstream release
+- The tickets are pre-emptive of the next release of vLLM
+- There may still be further changes when the next vLLM release is cut
+- This is because they've been updated in upstream vLLM and we need them for the next midstream and later downstream release
+- This ticket is created automagically. Please contact the RHAIIS Midstream team for more information.
 
 For upstream reference, see: https://github.com/vllm-project/vllm
 
