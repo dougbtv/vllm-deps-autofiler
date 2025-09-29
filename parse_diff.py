@@ -329,7 +329,10 @@ Examples:
                 print(f"Generated diff between {args.old_ref} and {args.new_ref}")
                 
                 # Optionally save the generated diff
-                diff_output_path = Path(__file__).parent / f"vllm-reqs-{args.old_ref}-to-{args.new_ref}.diff"
+                # Sanitize ref names for filename (replace / with -)
+                old_ref_safe = args.old_ref.replace('/', '-')
+                new_ref_safe = args.new_ref.replace('/', '-')
+                diff_output_path = Path(__file__).parent / f"vllm-reqs-{old_ref_safe}-to-{new_ref_safe}.diff"
                 with open(diff_output_path, 'w') as f:
                     f.write(diff_content)
                 print(f"Saved diff to {diff_output_path}")
