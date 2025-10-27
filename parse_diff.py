@@ -116,9 +116,9 @@ def parse_package_line(line: str) -> Tuple[str, str]:
     """Extract package name and version from a requirement line."""
     # Handle various package formats
     line = line.strip()
-    
-    # Skip comments and empty lines
-    if not line or line.startswith('#'):
+
+    # Skip comments, empty lines, and pip options (--extra-index-url, etc.)
+    if not line or line.startswith('#') or line.startswith('--'):
         return None, None
     
     # Handle URL-based packages (torch_xla)
@@ -348,17 +348,19 @@ Examples:
     changes = extract_changes_from_diff(diff_content)
     
     print(f"Found {len(changes)} package changes:")
-    
+
     # Create ticket files
     ticket_dir = Path(__file__).parent / args.output_dir
     ticket_dir.mkdir(exist_ok=True)
-    
+
     for package_name, change_info in changes.items():
         old_version = change_info['old_version']
         new_version = change_info['new_version']
         files = change_info['files']
-        
-        print(f"  {package_name}: {old_version} -> {new_version}")
+
+        # Format files list for display
+        files_display = ", ".join(files) if files else "unknown"
+        print(f"  {package_name}: {old_version} -> {new_version} (from: {files_display})")
         
         # Generate ticket data
         ticket_data = {
