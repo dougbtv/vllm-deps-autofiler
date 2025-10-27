@@ -291,7 +291,13 @@ Examples:
         default="ticket_text",
         help="Directory to output ticket files (default: ticket_text)"
     )
-    
+
+    parser.add_argument(
+        "--include-removals",
+        action="store_true",
+        help="Include package removals in the output (default: exclude removals)"
+    )
+
     args = parser.parse_args()
     
     if args.diff_file:
@@ -346,7 +352,11 @@ Examples:
     
     # Extract changes
     changes = extract_changes_from_diff(diff_content)
-    
+
+    # Filter out removals unless --include-removals is specified
+    if not args.include_removals:
+        changes = {pkg: info for pkg, info in changes.items() if info['new_version'] is not None}
+
     print(f"Found {len(changes)} package changes:")
 
     # Create ticket files

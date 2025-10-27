@@ -57,6 +57,9 @@ python3 parse_diff.py --generate-diff --old-ref v0.9.0 --new-ref v0.10.0
 
 # Use different output directory
 python3 parse_diff.py --generate-diff --old-ref v0.10.0 --new-ref main --output-dir my_tickets
+
+# Include package removals (excluded by default)
+python3 parse_diff.py --generate-diff --old-ref v0.10.0 --new-ref main --include-removals
 ```
 
 This will:
@@ -136,6 +139,16 @@ python3 jira_generator.py --package transformers --no-dry-run
 ```
 
 ### Command Line Options
+
+For `parse_diff.py`:
+
+- `--diff-file FILE` - Path to existing diff file to parse
+- `--generate-diff` - Generate diff from git repository
+- `--old-ref REF` - Old git ref/tag/branch to compare from (default: v0.10.0)
+- `--new-ref REF` - New git ref/tag/branch to compare to (default: main)
+- `--repo-url URL` - vLLM repository URL
+- `--output-dir DIR` - Directory to output ticket files (default: ticket_text)
+- `--include-removals` - Include package removals in the output (default: exclude removals)
 
 For `jira_generator.py`:
 
