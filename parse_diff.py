@@ -121,13 +121,21 @@ def parse_package_line(line: str) -> Tuple[str, str]:
     if not line or line.startswith('#') or line.startswith('--'):
         return None, None
     
-    # Handle URL-based packages (torch_xla)
+    # Handle URL-based packages (torch_xla, git repos)
     if '@' in line and 'http' in line:
         # Extract package name before @
         match = re.match(r'^([^\s\[]+)(?:\[[^\]]+\])?\s*@', line)
         if match:
             pkg_name = match.group(1)
-            # Extract version from URL
+
+            # First try to extract git commit hash (40 hex characters)
+            git_commit_match = re.search(r'@([0-9a-f]{40})', line)
+            if git_commit_match:
+                # Use short form (first 8 characters) for readability
+                version = git_commit_match.group(1)[:8]
+                return pkg_name, version
+
+            # Otherwise extract semantic version from URL
             version_match = re.search(r'(\d+\.\d+\.\d+(?:\.dev\d+)?)', line)
             version = version_match.group(1) if version_match else "unknown"
             return pkg_name, version
@@ -138,15 +146,31 @@ def parse_package_line(line: str) -> Tuple[str, str]:
     if match:
         pkg_name = match.group(1)
         version_spec = match.group(2) if match.group(2) else ""
-        
+
         # Extract version numbers from version spec
         if version_spec:
-            # Find the main version number
-            version_match = re.search(r'(\d+\.\d+(?:\.\d+)?(?:\+\w+|\.dev\d+)?)', version_spec)
-            version = version_match.group(1) if version_match else version_spec.strip()
+            # Prefer lower bounds (>=) over upper bounds (<) for version constraints
+            # This handles cases like ">=0.1.9,<1.0.0" correctly
+            lower_bound_match = re.search(r'>=?\s*(\d+\.\d+(?:\.\d+)?(?:\+\w+|\.dev\d+)?)', version_spec)
+            if lower_bound_match:
+                version = lower_bound_match.group(1)
+            else:
+                # If no lower bound, try exact version (==)
+                exact_match = re.search(r'==\s*(\d+\.\d+(?:\.\d+)?(?:\+\w+|\.dev\d+)?)', version_spec)
+                if exact_match:
+                    version = exact_match.group(1)
+                else:
+                    # Check if it's only an upper bound constraint (< or <=)
+                    # In this case, keep the full constraint since there's no specific version
+                    if re.match(r'^\s*<[=]?\s*[\d\.]+', version_spec.strip()):
+                        version = version_spec.strip()
+                    else:
+                        # Fall back to any version number found
+                        version_match = re.search(r'(\d+\.\d+(?:\.\d+)?(?:\+\w+|\.dev\d+)?)', version_spec)
+                        version = version_match.group(1) if version_match else version_spec.strip()
         else:
             version = "latest"
-        
+
         return pkg_name, version
     
     return None, None
