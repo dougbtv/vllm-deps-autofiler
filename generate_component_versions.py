@@ -159,7 +159,17 @@ def parse_requirements_file(repo_path: Path, req_file: str, package_name: str) -
 # ===== Component-Specific Extractors =====
 
 def extract_python_version(repo_path: Path) -> str:
-    """Extract Python version requirement from pyproject.toml."""
+    """
+    Extract Python version from Dockerfile.
+    Note: This returns the build default (e.g., 3.12), not the RHEL-specific patch version.
+    For RHEL builds, the actual version depends on the RHEL version (e.g., RHEL 9.6 uses 3.12.9).
+    """
+    # Try to get from Dockerfile first (gives us the build version like 3.12)
+    python_ver = parse_dockerfile_arg(repo_path, "Dockerfile", "PYTHON_VERSION")
+    if python_ver:
+        return python_ver
+
+    # Fallback to pyproject.toml (gives us minimum supported version)
     pyproject_path = repo_path / "pyproject.toml"
     if not pyproject_path.exists():
         return "[tbd]"
