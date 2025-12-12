@@ -253,6 +253,24 @@ def extract_common_packages(repo_path: Path) -> Dict[str, str]:
     return packages
 
 
+def extract_flash_attn_version(repo_path: Path) -> str:
+    """Extract flash_attn version from Dockerfile.rocm_base."""
+    fa_branch = parse_dockerfile_arg(repo_path, "Dockerfile.rocm_base", "FA_BRANCH")
+    if fa_branch:
+        # Return short form (8 chars) if it's a git hash
+        if re.match(r'^[0-9a-f]+$', fa_branch):
+            return fa_branch[:8]
+        return fa_branch
+    return "[tbd]"
+
+
+def extract_nccl_version(repo_path: Path) -> str:
+    """Extract nccl version from requirements/test.txt."""
+    # NCCL is installed as nvidia-nccl-cu12 package
+    nccl = parse_requirements_file(repo_path, "test.txt", "nvidia-nccl-cu12")
+    return nccl if nccl else "[tbd]"
+
+
 def extract_accelerator_packages(repo_path: Path) -> Dict[str, str]:
     """Extract versions for accelerator-specific packages."""
     packages = {}
@@ -327,7 +345,7 @@ def extract_nixl_version(repo_path: Path) -> str:
 def extract_all_versions(repo_path: Path) -> List[Tuple[int, str, str]]:
     """
     Extract all component versions and return list of (row_num, component_name, version).
-    Maintains exact spreadsheet order from row 16-54.
+    Maintains exact spreadsheet order from row 16-43 with blank lines for merged cells.
     """
     versions = []
 
@@ -355,12 +373,18 @@ def extract_all_versions(repo_path: Path) -> List[Tuple[int, str, str]]:
     versions.append((22, "Spyre s390x plugin", "[Spyre]"))
     versions.append((23, "Spyre ppc64le plugin", "[Spyre]"))
 
+    # Row 24: Merged cell (blank line)
+    versions.append((24, "[merged cells]", ""))
+
     # Rows 25-28: torch variants
     torch_vers = safe_extract(extract_torch_versions, repo_path, default={})
     versions.append((25, "torch [CUDA]", torch_vers.get('cuda', '[tbd]')))
     versions.append((26, "torch [ROCM]", torch_vers.get('rocm', '[tbd]')))
     versions.append((27, "torch [TPU]", torch_vers.get('tpu', '[TPU]')))
     versions.append((28, "torch [Spyre]", "[Spyre]"))
+
+    # Row 29: Merged cell (blank line)
+    versions.append((29, "[merged cells]", ""))
 
     # Row 30: aiter [ROCM]
     aiter_ver = safe_extract(extract_aiter_version, repo_path)
@@ -380,10 +404,12 @@ def extract_all_versions(repo_path: Path) -> List[Tuple[int, str, str]]:
     versions.append((32, "flashinfer [CUDA]", accel_pkgs.get('flashinfer', '[tbd]')))
 
     # Row 33: flash_attn [ROCM]
-    versions.append((33, "flash_attn [ROCM]", "[tbd]"))
+    flash_attn_ver = safe_extract(extract_flash_attn_version, repo_path)
+    versions.append((33, "flash_attn [ROCM]", flash_attn_ver))
 
     # Row 34: nccl
-    versions.append((34, "nccl", "[tbd]"))
+    nccl_ver = safe_extract(extract_nccl_version, repo_path)
+    versions.append((34, "nccl", nccl_ver))
 
     # EP kernel versions
     ep_vers = safe_extract(extract_ep_kernel_versions, repo_path, default={})
@@ -409,31 +435,11 @@ def extract_all_versions(repo_path: Path) -> List[Tuple[int, str, str]]:
                     accel_pkgs.get('triton', '[tbd]')))
     versions.append((42, "triton [Spyre]", "[Spyre]"))
 
-    # Row 43: vllm-tgis-adapter
+    # Row 43: vllm-tgis-adapter (last row needed)
     versions.append((43, "vllm-tgis-adapter [CUDA, ROCM, Spyre]", "[tbd]"))
 
-    # Row 45: llm-d
-    versions.append((45, "llm-d (not shipped)", "[tbd]"))
-
-    # Row 46: deep-ep [CUDA]
-    versions.append((46, "deep-ep [CUDA]", ep_vers.get('deep-ep', '[tbd]')))
-
-    # Row 47: deep-gemm [CUDA]
-    deepgemm_ver = safe_extract(extract_deepgemm_version, repo_path)
-    versions.append((47, "deep-gemm [CUDA]", deepgemm_ver))
-
-    # Row 48: nixl [CUDA]
-    nixl_ver = safe_extract(extract_nixl_version, repo_path)
-    versions.append((48, "nixl [CUDA]", nixl_ver))
-
-    # Row 49: pplx-kernels [CUDA]
-    versions.append((49, "pplx-kernels [CUDA]", ep_vers.get('pplx-kernels', '[tbd]')))
-
-    # Rows 51-54: Spyre-specific dependencies
-    versions.append((51, "aiu-monitor [Spyre]", "[Spyre]"))
-    versions.append((52, "ibm-fms [Spyre]", "[Spyre]"))
-    versions.append((53, "ibm-sendnn [Spyre]", "[Spyre]"))
-    versions.append((54, "torch-sendnn [Spyre]", "[Spyre]"))
+    # Note: Rows 44+ (llm-d dependencies and Spyre-specific dependencies) are not needed
+    # for the spreadsheet copy-paste workflow
 
     return versions
 
@@ -460,17 +466,21 @@ def format_output(versions: List[Tuple[int, str, str]], show_labels: bool = Fals
         lines.append("-" * 80)
 
         for row, name, version in sorted_versions:
-            status = "✓" if version not in ['[tbd]', '[Spyre]', '[TPU]'] else "⚠"
+            # Skip merged cells in the report
+            if name == "[merged cells]":
+                continue
+            status = "✓" if version not in ['[tbd]', '[Spyre]', '[TPU]', ''] else "⚠"
             lines.append(f"{row:<5} {name:<45} {version:<20} {status:<10}")
 
         lines.append("=" * 80)
 
-        # Summary statistics
-        total = len(sorted_versions)
-        determined = sum(1 for _, _, v in sorted_versions if v not in ['[tbd]', '[Spyre]', '[TPU]'])
-        spyre = sum(1 for _, _, v in sorted_versions if v == '[Spyre]')
-        tpu = sum(1 for _, _, v in sorted_versions if v == '[TPU]')
-        tbd = sum(1 for _, _, v in sorted_versions if v == '[tbd]')
+        # Summary statistics (excluding merged cells)
+        components_only = [(r, n, v) for r, n, v in sorted_versions if n != "[merged cells]"]
+        total = len(components_only)
+        determined = sum(1 for _, _, v in components_only if v not in ['[tbd]', '[Spyre]', '[TPU]', ''])
+        spyre = sum(1 for _, _, v in components_only if v == '[Spyre]')
+        tpu = sum(1 for _, _, v in components_only if v == '[TPU]')
+        tbd = sum(1 for _, _, v in components_only if v == '[tbd]')
 
         lines.append(f"Total components: {total}")
         lines.append(f"Determined: {determined}")
@@ -484,13 +494,18 @@ def format_output(versions: List[Tuple[int, str, str]], show_labels: bool = Fals
     elif output_format == "csv":
         lines = []
         for row, name, version in sorted_versions:
-            lines.append(f"{row},{name},{version}")
+            if name == "[merged cells]":
+                lines.append("")  # Blank line for merged cells
+            else:
+                lines.append(f"{row},{name},{version}")
         return '\n'.join(lines)
 
     else:  # simple
         lines = []
         for row, name, version in sorted_versions:
-            if show_labels:
+            if name == "[merged cells]":
+                lines.append("")  # Blank line for merged cells
+            elif show_labels:
                 lines.append(f"{name}: {version}")
             else:
                 lines.append(version)
