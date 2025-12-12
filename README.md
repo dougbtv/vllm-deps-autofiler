@@ -16,6 +16,7 @@ The tool helps automate the process of creating JIRA tickets for package updates
 
 - `parse_diff.py` - Generates diffs from git and parses requirements changes to create ticket files
 - `jira_generator.py` - Creates JIRA tickets directly using `rhjira` tool and provides preview functionality
+- `generate_component_versions.py` - Extracts component versions from vLLM releases for RHAI spreadsheet
 - `vllm-reqs.diff` - Example diff file showing package changes between vLLM versions
 - `ticket_text/` - Directory containing generated ticket YAML files
 - `requirements.txt` - Python dependencies
@@ -257,3 +258,148 @@ All new tickets are created by cloning this template and updating the content.
 ## Development Notes
 
 My initial diff is from: 4da8bf20d08f1f8f97a4839d580eb923d0ca9415
+
+---
+
+# Component Version Mapper for RHAI Spreadsheet
+
+## Overview
+
+The `generate_component_versions.py` tool extracts component version information from a vLLM repository at a specific release tag and outputs it in a format suitable for the "RHAI Release to Component Version Mapping" spreadsheet.
+
+This tool automates the tedious process of manually looking up versions for 35+ components across multiple files in the vLLM repository.
+
+## Usage
+
+### Basic Usage
+
+Extract versions for vLLM v0.12.0 (simple column output for copy-paste):
+
+```bash
+python3 generate_component_versions.py --ref v0.12.0
+```
+
+This outputs version values one per line, ready to paste into the spreadsheet column.
+
+### With Component Labels
+
+Show component names alongside values for verification:
+
+```bash
+python3 generate_component_versions.py --ref v0.12.0 --show-labels
+```
+
+### Validation Report
+
+Get a detailed report with statistics:
+
+```bash
+python3 generate_component_versions.py --ref v0.12.0 --output validation
+```
+
+### Additional Options
+
+```bash
+# Use different vLLM ref/tag
+python3 generate_component_versions.py --ref v0.11.2
+
+# Use different repository URL
+python3 generate_component_versions.py --ref v0.12.0 --repo-url https://github.com/fork/vllm.git
+
+# CSV format output
+python3 generate_component_versions.py --ref v0.12.0 --output csv
+```
+
+## What It Extracts
+
+The tool extracts versions for all components from row 16-54 in the spreadsheet:
+
+- **System requirements**: Python, RHEL, GCC, CUDA, ROCM
+- **PyTorch variants**: torch for CUDA, ROCM, TPU, Spyre
+- **Common packages**: transformers, tokenizers, compressed-tensors
+- **Accelerator-specific**: flashinfer, flash_attn, triton, tpu-info
+- **System libraries**: nccl, nvshmem, aiter
+- **LLM-D dependencies**: deep-ep, deep-gemm, nixl, pplx-kernels
+- **Spyre-specific**: aiu-monitor, ibm-fms, ibm-sendnn, torch-sendnn
+
+## Special Markers
+
+- **[Spyre]**: Component is now a Spyre plugin (plugin architecture)
+- **[TPU]**: Component is now a TPU plugin (plugin architecture)
+- **[tbd]**: Value cannot be determined from vLLM repository (needs manual lookup)
+
+## How It Works
+
+The tool:
+
+1. Clones the vLLM repository to a temporary directory
+2. Checks out the specified tag/ref
+3. Extracts versions from multiple sources:
+   - `pyproject.toml` for Python version
+   - `docker/Dockerfile` and `docker/Dockerfile.rocm_base` for system requirements
+   - `requirements/*.txt` files for Python packages
+   - `tools/*.sh` scripts for git-based dependencies
+4. Maps extracted versions to spreadsheet rows
+5. Formats output for easy copy-paste
+
+## Example Output
+
+**Simple mode** (default):
+```
+3.10
+[tbd]
+10
+12.9.1
+7.1
+[Spyre]
+...
+```
+
+**With labels** (--show-labels):
+```
+python: 3.10
+RHEL: [tbd]
+gcc [specific to Spyre]: 10
+CUDA: 12.9.1
+ROCM: 7.1
+Spyre x86 plugin: [Spyre]
+...
+```
+
+**Validation mode** (--output validation):
+```
+================================================================================
+Component Version Extraction Report
+================================================================================
+Row   Component                                     Version              Status
+--------------------------------------------------------------------------------
+16    python                                        3.10                 ✓
+17    RHEL                                          [tbd]                ⚠
+18    gcc [specific to Spyre]                       10                   ✓
+...
+================================================================================
+Total components: 35
+Determined: 18
+Spyre plugins: 11
+TPU plugins: 1
+TBD: 5
+================================================================================
+```
+
+## Workflow
+
+1. **Extract versions** for new vLLM release:
+   ```bash
+   python3 generate_component_versions.py --ref v0.12.0 --output validation
+   ```
+
+2. **Review** the validation report to see what was determined
+
+3. **Copy values** for spreadsheet:
+   ```bash
+   python3 generate_component_versions.py --ref v0.12.0
+   ```
+
+4. **Paste** the output into the appropriate column in the spreadsheet
+
+5. **Manually fill in** any `[tbd]` values that need to be determined from other sources
