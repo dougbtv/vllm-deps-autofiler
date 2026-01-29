@@ -87,12 +87,14 @@ The tool automatically filters requirements to focus on production dependencies:
 - `requirements/build.txt` and `requirements/build.in`
 - `requirements/cuda.txt` and `requirements/cuda.in`
 - `requirements/rocm.txt` and `requirements/rocm.in`
+- `requirements/rocm-build.txt` and `requirements/rocm-build.in`
 - `requirements/tpu.txt` and `requirements/tpu.in`
+- `requirements/cpu.txt` and `requirements/cpu.in`
+- `requirements/cpu-build.txt` and `requirements/cpu-build.in`
 
 **Excluded:**
 - `requirements/test*.txt` and `requirements/test*.in`
 - `requirements/nightly*.txt` and `requirements/nightly*.in`
-- `requirements/cpu*.txt` and `requirements/cpu*.in`
 
 This will:
 - Read `vllm-reqs.diff`

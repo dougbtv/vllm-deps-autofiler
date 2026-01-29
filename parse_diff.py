@@ -23,32 +23,34 @@ def clone_vllm_repo(temp_dir: Path) -> Path:
 
 def filter_requirements_files(requirements_dir: Path) -> List[Path]:
     """Filter requirements files to only include the ones we care about."""
-    # Include: common, build, cuda, rocm, tpu
-    # Exclude: test*, nightly*, cpu*
-    include_patterns = ["common", "build", "cuda", "rocm", "tpu"]
-    exclude_patterns = ["test", "nightly", "cpu"]
-    
+    # Include: common, build, cuda, rocm, tpu, cpu (and any -build variants)
+    # Exclude: test*, nightly*
+    include_patterns = ["common", "build", "cuda", "rocm", "tpu", "cpu"]
+    exclude_patterns = ["test", "nightly"]
+
     filtered_files = []
-    
+
     # Check both .txt and .in files
     for pattern in ["*.txt", "*.in"]:
         for req_file in requirements_dir.glob(pattern):
             filename = req_file.stem.lower()
-            
-            # Check if it matches any exclude pattern
-            should_exclude = any(exclude in filename for exclude in exclude_patterns)
-            if should_exclude:
-                continue
-                
-            # Check if it matches any include pattern or is a base requirements file
+
+            # Check if it matches any include pattern or is a base requirements file first
             should_include = (
                 any(include in filename for include in include_patterns) or
                 filename == "requirements"  # Include base requirements.txt/.in if it exists
             )
-            
-            if should_include:
-                filtered_files.append(req_file)
-    
+
+            if not should_include:
+                continue
+
+            # Then check if it matches any exclude pattern
+            should_exclude = any(exclude in filename for exclude in exclude_patterns)
+            if should_exclude:
+                continue
+
+            filtered_files.append(req_file)
+
     return filtered_files
 
 def generate_requirements_diff(repo_path: Path, old_ref: str, new_ref: str) -> str:
